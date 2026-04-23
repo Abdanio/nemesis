@@ -233,5 +233,25 @@ window.AuditMap = (() => {
     map.getSource(SOURCE).setData(buildStyledGeo(geo, getFeatureStyle));
   }
 
-  return { render, refresh, closePopup: clearHover };
+  function zoomToRegion(feature, options) {
+    if (!map || !feature || !feature.geometry) return;
+    const opts = options || {};
+    let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+    let hasCoords = false;
+    walkCoords(feature.geometry, (lng, lat) => {
+      hasCoords = true;
+      if (lng < minLng) minLng = lng;
+      if (lat < minLat) minLat = lat;
+      if (lng > maxLng) maxLng = lng;
+      if (lat > maxLat) maxLat = lat;
+    });
+    if (!hasCoords) return;
+    map.fitBounds([[minLng, minLat], [maxLng, maxLat]], {
+      padding: opts.padding !== undefined ? opts.padding : 80,
+      duration: opts.duration !== undefined ? opts.duration : 1500,
+      maxZoom: opts.maxZoom !== undefined ? opts.maxZoom : 13,
+    });
+  }
+
+  return { render, refresh, closePopup: clearHover, zoomToRegion };
 })();
