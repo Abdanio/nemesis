@@ -810,9 +810,134 @@ function getOwnerPackages(db, requestQuery) {
   };
 }
 
+const UMKM_BUDGET_THRESHOLD = 500000000;
+
+function getRegionUmkmSummary(db, regionKey) {
+  const regionRow = db
+    .prepare(
+      `SELECT regions.region_key, regions.display_name FROM regions WHERE regions.region_key = ?`
+    )
+    .get(regionKey);
+
+  if (!regionRow) {
+    return null;
+  }
+
+  const summaryRow = db
+    .prepare(
+      `
+      SELECT
+        COUNT(*) AS total_umkm_packages,
+        COALESCE(SUM(packages.budget), 0) AS total_umkm_budget,
+        COALESCE(SUM(packages.potential_waste), 0) AS total_umkm_waste,
+        COALESCE(SUM(packages.is_priority), 0) AS total_umkm_priority,
+        COUNT(CASE WHEN packages.severity = 'low' THEN 1 END) AS low_count,
+        COUNT(CASE WHEN packages.severity = 'med' THEN 1 END) AS med_count,
+        COUNT(CASE WHEN packages.severity = 'high' THEN 1 END) AS high_count,
+        COUNT(CASE WHEN packages.severity = 'absurd' THEN 1 END) AS absurd_count
+      FROM package_regions
+      INNER JOIN packages ON packages.id = package_regions.package_id
+      WHERE package_regions.region_key = ?
+        AND (
+          packages.budget < ?
+          OR packages.procurement_method LIKE '%Langsung%'
+        )
+    `
+    )
+    .get(regionKey, UMKM_BUDGET_THRESHOLD);
+
+  const topPackages = db
+    .prepare(
+      `
+      SELECT
+        packages.id,
+        packages.source_id,
+        packages.package_name,
+        packages.owner_name,
+        packages.owner_type,
+        packages.procurement_method,
+        packages.procurement_type,
+        packages.budget,
+        packages.severity,
+        packages.potential_waste,
+        packages.is_priority
+      FROM package_regions
+      INNER JOIN packages ON packages.id = package_regions.package_id
+      WHERE package_regions.region_key = ?
+        AND (
+          packages.budget < ?
+          OR packages.procurement_method LIKE '%Langsung%'
+        )
+      ORDER BY
+        packages.is_priority DESC,
+        packages.potential_waste DESC,
+        COALESCE(packages.budget, 0) DESC
+      LIMIT 10
+    `
+    )
+    .all(regionKey, UMKM_BUDGET_THRESHOLD);
+
+  const procurementMethodCounts = db
+    .prepare(
+      `
+      SELECT
+        packages.procurement_method,
+        COUNT(*) AS count,
+        COALESCE(SUM(packages.budget), 0) AS total_budget
+      FROM package_regions
+      INNER JOIN packages ON packages.id = package_regions.package_id
+      WHERE package_regions.region_key = ?
+        AND (
+          packages.budget < ?
+          OR packages.procurement_method LIKE '%Langsung%'
+        )
+      GROUP BY packages.procurement_method
+      ORDER BY count DESC
+      LIMIT 5
+    `
+    )
+    .all(regionKey, UMKM_BUDGET_THRESHOLD);
+
+  return {
+    regionKey: regionRow.region_key,
+    regionName: regionRow.display_name,
+    summary: {
+      totalPackages: summaryRow.total_umkm_packages || 0,
+      totalBudget: summaryRow.total_umkm_budget || 0,
+      totalPotentialWaste: summaryRow.total_umkm_waste || 0,
+      totalPriorityPackages: summaryRow.total_umkm_priority || 0,
+      severityCounts: {
+        low: summaryRow.low_count || 0,
+        med: summaryRow.med_count || 0,
+        high: summaryRow.high_count || 0,
+        absurd: summaryRow.absurd_count || 0,
+      },
+    },
+    topPackages: topPackages.map((row) => ({
+      id: row.id,
+      sourceId: row.source_id,
+      packageName: row.package_name,
+      ownerName: row.owner_name,
+      ownerType: row.owner_type,
+      procurementMethod: row.procurement_method,
+      procurementType: row.procurement_type,
+      budget: row.budget,
+      severity: row.severity,
+      potentialWaste: row.potential_waste,
+      isPriority: Boolean(row.is_priority),
+    })),
+    procurementBreakdown: procurementMethodCounts.map((row) => ({
+      method: row.procurement_method || "Tidak Diketahui",
+      count: row.count,
+      totalBudget: row.total_budget,
+    })),
+  };
+}
+
 module.exports = {
   getBootstrapPayload,
   getOwnerPackages,
   getRegionPackages,
   getProvincePackages,
+  getRegionUmkmSummary,
 };

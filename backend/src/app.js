@@ -1,7 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const { CORS_ORIGIN } = require("./config");
-const { getBootstrapPayload, getOwnerPackages, getRegionPackages, getProvincePackages } = require("./dashboard-repository");
+const { getBootstrapPayload, getOwnerPackages, getRegionPackages, getProvincePackages, getRegionUmkmSummary } = require("./dashboard-repository");
 
 function resolveCorsOrigin() {
   if (CORS_ORIGIN === "*") {
@@ -47,6 +47,17 @@ function createApp(db) {
 
     if (!payload) {
       res.status(404).json({ error: "Province not found" });
+      return;
+    }
+
+    res.json(payload);
+  });
+
+  app.get("/api/regions/:regionKey/umkm", (req, res) => {
+    const payload = getRegionUmkmSummary(db, req.params.regionKey);
+
+    if (!payload) {
+      res.status(404).json({ error: "Region not found" });
       return;
     }
 

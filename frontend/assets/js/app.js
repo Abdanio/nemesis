@@ -907,6 +907,202 @@
     );
   }
 
+  function renderBudgetChart(region) {
+    const ownerLabels = [
+      { key: "central", label: "Kementerian/Lembaga", color: "var(--steel)" },
+      { key: "provinsi", label: "Pemprov", color: "var(--sage)" },
+      { key: "kabkota", label: "Pemkot", color: "var(--olive)" },
+      { key: "other", label: "Others", color: "var(--rose)" },
+    ];
+
+    const budgets = ownerLabels.map((item) => ({
+      ...item,
+      budget: Number((region.ownerMetrics && region.ownerMetrics[item.key] && region.ownerMetrics[item.key].totalBudget) || 0),
+    }));
+
+    const maxBudget = Math.max(...budgets.map((item) => item.budget), 1);
+
+    const rows = budgets
+      .map((item) => {
+        const pct = item.budget > 0 ? Math.max(2, Math.round((item.budget / maxBudget) * 100)) : 0;
+        return (
+          `<div class="bc-row">` +
+          `<div class="bc-label">${escapeHtml(item.label)}</div>` +
+          `<div class="bc-track"><div class="bc-fill" style="width:${pct}%;background:${escapeAttr(item.color)}">` +
+          `${item.budget > 0 ? `<span>Rp ${escapeHtml(formatCompactCurrency(item.budget))}</span>` : ""}` +
+          `</div></div>` +
+          `<div class="bc-val">${item.budget > 0 ? escapeHtml(formatCompactCurrency(item.budget)) : "-"}</div>` +
+          `</div>`
+        );
+      })
+      .join("");
+
+    const wasteRatio =
+      region.totalBudget > 0 ? Math.min(100, Math.round((region.totalPotentialWaste / region.totalBudget) * 100)) : 0;
+
+    return (
+      `<div class="detail-section">` +
+      `<div class="detail-section-title"><span class="ds-icon">📊</span> Infografis Anggaran / Pagu</div>` +
+      `<div class="budget-chart-wrap">${rows}</div>` +
+      `<div style="margin-top:10px;font-size:10px;color:var(--t3)">` +
+      `Potensi pemborosan <strong style="color:var(--brick)">Rp ${escapeHtml(formatCompactCurrency(region.totalPotentialWaste))}</strong>` +
+      ` dari total pagu <strong style="color:var(--sage)">Rp ${escapeHtml(formatCompactCurrency(region.totalBudget))}</strong>` +
+      ` <span style="color:var(--brick)">(${escapeHtml(String(wasteRatio))}%)</span>` +
+      `</div>` +
+      `</div>`
+    );
+  }
+
+  function renderAnomalySection(region) {
+    const sevItems = [
+      { key: "absurd", label: "Absurd", color: "var(--rose)", count: Number(region.severityCounts.absurd) || 0 },
+      { key: "high", label: "High", color: "var(--brick)", count: Number(region.severityCounts.high) || 0 },
+      {
+        key: "med",
+        label: "Medium",
+        color: "var(--olive)",
+        count:
+          Number(region.severityCounts.med) ||
+          0,
+      },
+      {
+        key: "low",
+        label: "Low",
+        color: "var(--steel)",
+        count: Math.max(
+          0,
+          (Number(region.totalPackages) || 0) -
+            (Number(region.severityCounts.absurd) || 0) -
+            (Number(region.severityCounts.high) || 0) -
+            (Number(region.severityCounts.med) || 0)
+        ),
+      },
+    ];
+
+    const maxCount = Math.max(...sevItems.map((item) => item.count), 1);
+
+    const bars = sevItems
+      .map((item) => {
+        const pct = item.count > 0 ? Math.max(2, Math.round((item.count / maxCount) * 100)) : 0;
+        const isActive = state.modal.severity === item.key;
+        return (
+          `<div class="ac-row">` +
+          `<div class="ac-label" style="color:${escapeAttr(item.color)};font-weight:${isActive ? "700" : "600"}">${escapeHtml(item.label)}</div>` +
+          `<div class="ac-track"><div class="ac-fill" style="width:${pct}%;background:${escapeAttr(item.color)};opacity:${isActive ? 1 : 0.65}"></div></div>` +
+          `<div class="ac-count">${escapeHtml(formatNumber(item.count))}</div>` +
+          `</div>`
+        );
+      })
+      .join("");
+
+    const pills = sevItems
+      .map((item) => {
+        const isActive = state.modal.severity === item.key;
+        return (
+          `<button class="sev-pill ${escapeAttr(item.key)}${isActive ? " active" : ""}" onclick="${actionCall("setModalSeverity", isActive ? "" : item.key)}">` +
+          `${escapeHtml(item.label)} (${escapeHtml(formatNumber(item.count))})` +
+          `</button>`
+        );
+      })
+      .join("");
+
+    return (
+      `<div class="detail-section">` +
+      `<div class="detail-section-title"><span class="ds-icon">🔍</span> Deteksi Anomali & Severity</div>` +
+      `<div class="anomaly-chart-wrap">${bars}</div>` +
+      `<div class="sev-filter-pills">` +
+      `<button class="sev-pill${!state.modal.severity ? " active" : ""}" onclick="${actionCall("setModalSeverity", "")}">Semua</button>` +
+      pills +
+      `</div>` +
+      `</div>`
+    );
+  }
+
+  function renderUmkmSection() {
+    return (
+      `<div class="detail-section" id="umkmSection">` +
+      `<div class="detail-section-title"><span class="ds-icon">🏪</span> Potensi Paket UMKM</div>` +
+      `<div class="umkm-loading" id="umkmContent">Memuat data potensi UMKM...</div>` +
+      `</div>`
+    );
+  }
+
+  async function loadUmkmSectionData(regionKey) {
+    const container = document.getElementById("umkmContent");
+    if (!container) return;
+
+    try {
+      const payload = await fetchJson(`/regions/${encodeURIComponent(regionKey)}/umkm`);
+
+      if (!document.getElementById("umkmContent")) return;
+
+      const summary = payload.summary;
+
+      if (!summary || summary.totalPackages === 0) {
+        container.innerHTML = `<div class="umkm-empty">Tidak ada data paket UMKM potensial untuk area ini.</div>`;
+        return;
+      }
+
+      const summaryGrid =
+        `<div class="umkm-summary-grid">` +
+        `<div class="umkm-stat"><span>Total Paket UMKM</span><strong>${escapeHtml(formatNumber(summary.totalPackages))}</strong></div>` +
+        `<div class="umkm-stat"><span>Total Pagu</span><strong>Rp ${escapeHtml(formatCompactCurrency(summary.totalBudget))}</strong></div>` +
+        `<div class="umkm-stat"><span>Potensi Pemborosan</span><strong style="color:var(--brick)">Rp ${escapeHtml(formatCompactCurrency(summary.totalPotentialWaste))}</strong></div>` +
+        `</div>`;
+
+      let methodHtml = "";
+      if (payload.procurementBreakdown && payload.procurementBreakdown.length) {
+        const methodRows = payload.procurementBreakdown
+          .map(
+            (item) =>
+              `<div class="umkm-method-row"><div class="umkm-method-name">${escapeHtml(item.method)}</div>` +
+              `<div class="umkm-method-count">${escapeHtml(formatNumber(item.count))} paket &middot; Rp ${escapeHtml(formatCompactCurrency(item.totalBudget))}</div>` +
+              `</div>`
+          )
+          .join("");
+        methodHtml =
+          `<div style="font-size:9.5px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:6px">Metode Pengadaan</div>` +
+          `<div class="umkm-method-list">${methodRows}</div>`;
+      }
+
+      let topPackagesHtml = "";
+      if (payload.topPackages && payload.topPackages.length) {
+        const packageRows = payload.topPackages
+          .map((pkg) => {
+            const packageUrl = buildInaprocUrl(pkg.sourceId);
+            return (
+              `<tr${packageUrl ? ` class="package-row-link" tabindex="0" role="link" onclick="${actionCall("openPackageDetail", pkg.sourceId)}" onkeydown="${actionExpr(`dashboardActions.handlePackageRowKeydown(event, ${jsArg(pkg.sourceId)})`)}` + `"` : ""}>` +
+              `<td class="mono" style="font-size:10px">${escapeHtml(String(pkg.sourceId || pkg.id))}</td>` +
+              `<td style="font-size:10px;font-weight:600">${escapeHtml(pkg.packageName)}</td>` +
+              `<td style="font-size:9.5px;color:var(--t3)">${escapeHtml(pkg.procurementMethod || "-")}</td>` +
+              `<td class="mono" style="font-size:9.5px;color:var(--sage)">${escapeHtml(pkg.budget !== null ? `Rp ${formatCompactCurrency(pkg.budget)}` : "-")}</td>` +
+              `<td><span class="sev-b" style="background:${escapeAttr(
+                pkg.severity === "absurd"
+                  ? "rgba(212,169,153,.18)"
+                  : pkg.severity === "high"
+                  ? "rgba(168,60,46,.16)"
+                  : pkg.severity === "med"
+                  ? "rgba(139,115,50,.16)"
+                  : "rgba(123,134,163,.16)"
+              )};color:${escapeAttr(severityColor(pkg.severity))}">${escapeHtml(severityLabel(pkg.severity))}</span></td>` +
+              `</tr>`
+            );
+          })
+          .join("");
+
+        topPackagesHtml =
+          `<div style="font-size:9.5px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin:12px 0 6px">Paket Teratas (Potensi UMKM)</div>` +
+          `<table class="umkm-tbl"><thead><tr><th>ID</th><th>Nama Paket</th><th>Metode</th><th>Pagu</th><th>Severity</th></tr></thead>` +
+          `<tbody>${packageRows}</tbody></table>`;
+      }
+
+      container.innerHTML = summaryGrid + methodHtml + topPackagesHtml;
+    } catch (_error) {
+      const el = document.getElementById("umkmContent");
+      if (el) el.innerHTML = `<div class="umkm-empty" style="color:var(--t3)">Data UMKM tidak tersedia.</div>`;
+    }
+  }
+
   function renderRegionModalContent(payload) {
     const region = payload.region;
     const rowsHtml = renderPackageTableRows(payload.items);
@@ -953,6 +1149,9 @@
         formatNumber(region.severityCounts.absurd)
       )}</strong></div>` +
       `</div>` +
+      renderBudgetChart(region) +
+      renderAnomalySection(region) +
+      renderUmkmSection() +
       `<div class="modal-filters">` +
       `<input type="text" placeholder="Cari paket, lembaga, atau satker..." value="${escapeAttr(
         state.modal.search
@@ -976,6 +1175,8 @@
       )} paket pada area ini</div>` +
       `<table class="rtbl"><thead><tr><th>ID</th><th>Nama Paket</th><th>Pemilik</th><th>Satker / Lokasi</th><th>Pagu</th><th>Severity</th><th>Alasan</th></tr></thead><tbody>${rowsHtml}</tbody></table>` +
       renderPagination(payload.pagination);
+
+    loadUmkmSectionData(region.regionKey);
   }
 
   function renderProvinceModalContent(payload) {
@@ -1356,6 +1557,68 @@
     openPackageDetail(sourceId);
   }
 
+  function findBandungRegion() {
+    if (!dashboardData) return null;
+    return (
+      dashboardData.regions.find(
+        (region) => region.regionType === "Kota" && region.regionName.toLowerCase().includes("bandung")
+      ) || null
+    );
+  }
+
+  function dismissBandungSpotlight() {
+    const el = document.getElementById("bandungSpotlight");
+    if (el) {
+      el.style.opacity = "0";
+      el.style.transform = "translateY(16px) scale(.95)";
+      el.style.transition = "all .3s ease";
+      setTimeout(() => {
+        el.style.display = "none";
+      }, 300);
+    }
+  }
+
+  function showBandungSpotlight(region) {
+    const el = document.getElementById("bandungSpotlight");
+    if (!el) return;
+
+    const metrics = getSidebarAreaMetrics(region);
+
+    el.innerHTML =
+      `<button class="bs-close" onclick="dashboardActions.dismissBandungSpotlight()" title="Tutup">&#10005;</button>` +
+      `<div class="bs-badge">📍 Sorotan Kota</div>` +
+      `<div class="bs-title">${escapeHtml(region.displayName)}</div>` +
+      `<div class="bs-sub">${escapeHtml(region.provinceName)} &mdash; Tahun Anggaran 2026</div>` +
+      `<div class="bs-grid">` +
+      `<div class="bs-stat"><div class="bs-stat-l">Potensi Pemborosan</div><div class="bs-stat-v" style="color:var(--brick)">Rp ${escapeHtml(formatCompactCurrency(region.totalPotentialWaste))}</div></div>` +
+      `<div class="bs-stat"><div class="bs-stat-l">Total Paket</div><div class="bs-stat-v">${escapeHtml(formatNumber(region.totalPackages))}</div></div>` +
+      `<div class="bs-stat"><div class="bs-stat-l">Paket Prioritas</div><div class="bs-stat-v">${escapeHtml(formatNumber(region.totalPriorityPackages))}</div></div>` +
+      `<div class="bs-stat"><div class="bs-stat-l">Total Pagu</div><div class="bs-stat-v" style="color:var(--sage)">Rp ${escapeHtml(formatCompactCurrency(metrics.totalBudget))}</div></div>` +
+      `</div>` +
+      `<button class="bs-btn" onclick="dashboardActions.openAreaModal(${jsArg(region.regionKey)})">Lihat Detail Lengkap &rarr;</button>`;
+
+    el.style.display = "block";
+    el.style.opacity = "";
+    el.style.transform = "";
+    el.style.transition = "";
+  }
+
+  function zoomToBandung() {
+    const region = findBandungRegion();
+    if (!region) return;
+
+    const geo = getActiveGeo();
+    if (!geo || !Array.isArray(geo.features)) return;
+
+    const feature = geo.features.find((f) => f.properties && f.properties.regionKey === region.regionKey);
+    if (!feature) return;
+
+    setTimeout(() => {
+      AuditMap.zoomToRegion(feature, { padding: 100, duration: 2000, maxZoom: 13 });
+      setTimeout(() => showBandungSpotlight(region), 1800);
+    }, 600);
+  }
+
   function bindEvents() {
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
@@ -1383,6 +1646,7 @@
       renderFilterChips();
       renderTabs();
       renderSidebarContent();
+      zoomToBandung();
     } catch (error) {
       renderBootstrapError(formatFetchError(error));
     }
@@ -1391,6 +1655,7 @@
   window.dashboardActions = {
     changeModalPage,
     closeRegionModal,
+    dismissBandungSpotlight,
     handlePackageRowKeydown,
     openAreaModal,
     openOwnerModal,
