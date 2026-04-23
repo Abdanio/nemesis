@@ -812,6 +812,12 @@ function getOwnerPackages(db, requestQuery) {
 
 const UMKM_BUDGET_THRESHOLD = 500000000;
 
+// UMKM packages are identified by budget below the threshold OR by direct procurement
+// methods. The '%Langsung%' pattern intentionally matches all variants of
+// "Pengadaan Langsung" (e.g., "Pengadaan Langsung Pasca Kualifikasi"), which are
+// the primary procurement pathways for UMKM/small businesses in Indonesian government.
+const UMKM_PROCUREMENT_PATTERN = "%Langsung%";
+
 function getRegionUmkmSummary(db, regionKey) {
   const regionRow = db
     .prepare(
@@ -840,11 +846,11 @@ function getRegionUmkmSummary(db, regionKey) {
       WHERE package_regions.region_key = ?
         AND (
           packages.budget < ?
-          OR packages.procurement_method LIKE '%Langsung%'
+          OR packages.procurement_method LIKE ? ESCAPE '\\'
         )
     `
     )
-    .get(regionKey, UMKM_BUDGET_THRESHOLD);
+    .get(regionKey, UMKM_BUDGET_THRESHOLD, UMKM_PROCUREMENT_PATTERN);
 
   const topPackages = db
     .prepare(
@@ -866,7 +872,7 @@ function getRegionUmkmSummary(db, regionKey) {
       WHERE package_regions.region_key = ?
         AND (
           packages.budget < ?
-          OR packages.procurement_method LIKE '%Langsung%'
+          OR packages.procurement_method LIKE ? ESCAPE '\\'
         )
       ORDER BY
         packages.is_priority DESC,
@@ -875,7 +881,7 @@ function getRegionUmkmSummary(db, regionKey) {
       LIMIT 10
     `
     )
-    .all(regionKey, UMKM_BUDGET_THRESHOLD);
+    .all(regionKey, UMKM_BUDGET_THRESHOLD, UMKM_PROCUREMENT_PATTERN);
 
   const procurementMethodCounts = db
     .prepare(
@@ -889,14 +895,14 @@ function getRegionUmkmSummary(db, regionKey) {
       WHERE package_regions.region_key = ?
         AND (
           packages.budget < ?
-          OR packages.procurement_method LIKE '%Langsung%'
+          OR packages.procurement_method LIKE ? ESCAPE '\\'
         )
       GROUP BY packages.procurement_method
       ORDER BY count DESC
       LIMIT 5
     `
     )
-    .all(regionKey, UMKM_BUDGET_THRESHOLD);
+    .all(regionKey, UMKM_BUDGET_THRESHOLD, UMKM_PROCUREMENT_PATTERN);
 
   return {
     regionKey: regionRow.region_key,
