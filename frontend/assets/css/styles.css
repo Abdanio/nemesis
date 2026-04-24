@@ -269,4 +269,53 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--b0);color:var(-
 .umkm-method-count{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--sage);font-weight:700;white-space:nowrap}
 .umkm-empty{font-size:11px;color:var(--t3);padding:12px 0}
 @media(max-width:768px){.modal-kpis,.modal-summary-grid{grid-template-columns:repeat(2,1fr)}.modal-body{padding:12px 16px}.modal-top{padding:12px 16px}.pager{flex-direction:column}.umkm-summary-grid{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:640px){.modal-summary-grid{grid-template-columns:1fr}.modal-filters{flex-direction:column;align-items:stretch}.chk{justify-content:flex-start}.bandung-spotlight{bottom:12px;right:12px;left:12px;max-width:none;min-width:0}}
+
+/* ── Pie / Donut Chart Layout ─────────────────────── */
+.pie-chart-layout{display:flex;align-items:center;gap:20px;margin-bottom:14px}
+.pie-canvas-wrap{position:relative;flex-shrink:0}
+.pie-canvas-wrap canvas{display:block}
+.pie-center-label{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+.pie-cl-v{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:var(--t1);text-align:center;line-height:1.2}
+.pie-cl-l{font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;text-align:center}
+.pie-legend{flex:1;display:flex;flex-direction:column;gap:6px}
+.pie-legend-row{display:grid;grid-template-columns:10px 1fr auto auto;align-items:center;gap:7px;font-size:10.5px}
+.pie-legend-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+.pie-legend-label{color:var(--t2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pie-legend-val{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--sage);font-weight:600;white-space:nowrap}
+.pie-legend-pct{font-size:9px;color:var(--t3);min-width:28px;text-align:right;white-space:nowrap}
+
+/* ── Waste Ratio Bar ───────────────────────────────── */
+.waste-ratio-bar{background:var(--b0);border:1px solid var(--bd);border-radius:8px;padding:10px 12px}
+.wrb-label{display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--t3);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+.wrb-pct{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700}
+.wrb-track{height:8px;background:rgba(255,255,255,.05);border-radius:999px;overflow:hidden;margin-bottom:5px}
+.wrb-fill{height:100%;border-radius:999px;transition:width .6s cubic-bezier(.4,0,.2,1)}
+.wrb-info{font-size:9.5px;color:var(--t3)}
+
+/* ── Anomaly Chart v2 ──────────────────────────────── */
+.anomaly-layout{display:flex;gap:16px;align-items:flex-start;margin-bottom:14px}
+.anomaly-donut-col{display:flex;flex-direction:column;align-items:center;gap:8px;flex-shrink:0}
+.anomaly-score-badge{font-size:8px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;border:1px solid;border-radius:999px;padding:3px 10px;white-space:nowrap}
+.anomaly-bars-col{flex:1;display:flex;flex-direction:column;gap:8px}
+.ac2-row{padding:7px 10px;border-radius:7px;border:1px solid transparent;transition:all .2s}
+.ac2-row:hover{background:rgba(255,255,255,.03);border-color:var(--bd)}
+.ac2-row.active{background:rgba(181,168,130,.06);border-color:var(--sage)}
+.ac2-head{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+.ac2-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.ac2-label{font-size:11px;font-weight:700;flex:1}
+.ac2-count{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--t2);white-space:nowrap}
+.ac2-pct{font-size:9px;color:var(--t3);min-width:30px;text-align:right;white-space:nowrap}
+.ac2-track{height:6px;background:rgba(255,255,255,.05);border-radius:999px;overflow:hidden}
+.ac2-fill{height:100%;border-radius:999px;transition:width .5s cubic-bezier(.4,0,.2,1)}
+
+/* ── Severity Filter Pills Enhanced ───────────────── */
+.sev-filter-title{font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;font-weight:600;width:100%;margin-bottom:2px}
+
+@media(max-width:640px){
+  .pie-chart-layout{flex-direction:column;align-items:flex-start}
+  .anomaly-layout{flex-direction:column}
+  .modal-summary-grid{grid-template-columns:1fr}
+  .modal-filters{flex-direction:column;align-items:stretch}
+  .chk{justify-content:flex-start}
+  .bandung-spotlight{bottom:12px;right:12px;left:12px;max-width:none;min-width:0}
+}

@@ -820,7 +820,7 @@
     );
   }
 
-  function renderGeoLayer(fitToBounds) {
+  function renderGeoLayer(fitToBounds, onReady) {
     const geo = getActiveGeo();
 
     if (!geo || !Array.isArray(geo.features) || !geo.features.length) {
@@ -838,12 +838,17 @@
         fitBounds: fitToBounds,
         isProvinceView: isProvinceView(),
       },
-      clearMapStatus
+      () => {
+        clearMapStatus();
+        if (typeof onReady === "function") {
+          onReady();
+        }
+      }
     );
   }
 
-  function initMap() {
-    renderGeoLayer(true);
+  function initMap(onReady) {
+    renderGeoLayer(true, onReady);
   }
 
   function refreshMapStyles() {
@@ -907,64 +912,126 @@
     );
   }
 
+  // --- Chart Utilities ---
+  const CSS_COLOR_MAP = {
+    "var(--steel)": "#7b86a3",
+    "var(--sage)": "#b5a882",
+    "var(--olive)": "#8b7332",
+    "var(--rose)": "#d4a999",
+    "var(--brick)": "#a83c2e",
+  };
+
+  function resolveCssColor(color) {
+    return CSS_COLOR_MAP[color] || color;
+  }
+
+  function drawPieChart(canvasId, slices, opts) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    const outerR = cx - 4;
+    const innerR = opts && opts.donut ? outerR * 0.55 : 0;
+    const total = slices.reduce((s, sl) => s + sl.value, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!total) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,255,255,0.04)";
+      ctx.fill();
+      if (innerR) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, innerR, 0, Math.PI * 2);
+        ctx.fillStyle = "#1c2847";
+        ctx.fill();
+      }
+      return;
+    }
+    let startAngle = -Math.PI / 2;
+    slices.forEach((sl) => {
+      if (!sl.value) return;
+      const sweep = (sl.value / total) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, outerR, startAngle, startAngle + sweep);
+      ctx.closePath();
+      ctx.fillStyle = resolveCssColor(sl.color);
+      ctx.fill();
+      startAngle += sweep;
+    });
+    if (innerR) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, innerR, 0, Math.PI * 2);
+      ctx.fillStyle = "#1c2847";
+      ctx.fill();
+    }
+  }
+
+  function scheduleChart(canvasId, slices, opts) {
+    requestAnimationFrame(() => drawPieChart(canvasId, slices, opts));
+  }
+
   function renderBudgetChart(region) {
-    const ownerLabels = [
+    const ownerDefs = [
       { key: "central", label: "Kementerian/Lembaga", color: "var(--steel)" },
       { key: "provinsi", label: "Pemprov", color: "var(--sage)" },
       { key: "kabkota", label: "Pemkot", color: "var(--olive)" },
       { key: "other", label: "Others", color: "var(--rose)" },
     ];
 
-    const budgets = ownerLabels.map((item) => ({
+    const budgets = ownerDefs.map((item) => ({
       ...item,
       budget: Number((region.ownerMetrics && region.ownerMetrics[item.key] && region.ownerMetrics[item.key].totalBudget) || 0),
+      packages: Number((region.ownerMix && region.ownerMix[item.key]) || 0),
     }));
 
-    const maxBudget = Math.max(...budgets.map((item) => item.budget), 1);
+    const totalBudget = budgets.reduce((s, b) => s + b.budget, 0) || 1;
+    const wasteRatio = region.totalBudget > 0 ? Math.min(100, Math.round((region.totalPotentialWaste / region.totalBudget) * 100)) : 0;
+    const pieCanvasId = `budgetPie_${Date.now()}`;
 
-    const rows = budgets
-      .map((item) => {
-        const pct = item.budget > 0 ? Math.max(2, Math.round((item.budget / maxBudget) * 100)) : 0;
+    const legendRows = budgets
+      .filter((b) => b.budget > 0)
+      .map((b) => {
+        const pct = Math.round((b.budget / totalBudget) * 100);
         return (
-          `<div class="bc-row">` +
-          `<div class="bc-label">${escapeHtml(item.label)}</div>` +
-          `<div class="bc-track"><div class="bc-fill" style="width:${pct}%;background:${escapeAttr(item.color)}">` +
-          `${item.budget > 0 ? `<span>Rp ${escapeHtml(formatCompactCurrency(item.budget))}</span>` : ""}` +
-          `</div></div>` +
-          `<div class="bc-val">${item.budget > 0 ? escapeHtml(formatCompactCurrency(item.budget)) : "-"}</div>` +
+          `<div class="pie-legend-row">` +
+          `<span class="pie-legend-dot" style="background:${escapeAttr(resolveCssColor(b.color))}"></span>` +
+          `<span class="pie-legend-label">${escapeHtml(b.label)}</span>` +
+          `<span class="pie-legend-val">${escapeHtml(formatCompactCurrency(b.budget))}</span>` +
+          `<span class="pie-legend-pct">${pct}%</span>` +
           `</div>`
         );
       })
       .join("");
 
-    const wasteRatio =
-      region.totalBudget > 0 ? Math.min(100, Math.round((region.totalPotentialWaste / region.totalBudget) * 100)) : 0;
+    const slices = budgets.map((b) => ({ value: b.budget, color: b.color }));
 
-    return (
+    const html =
       `<div class="detail-section">` +
-      `<div class="detail-section-title"><span class="ds-icon">📊</span> Infografis Anggaran / Pagu</div>` +
-      `<div class="budget-chart-wrap">${rows}</div>` +
-      `<div style="margin-top:10px;font-size:10px;color:var(--t3)">` +
-      `Potensi pemborosan <strong style="color:var(--brick)">Rp ${escapeHtml(formatCompactCurrency(region.totalPotentialWaste))}</strong>` +
-      ` dari total pagu <strong style="color:var(--sage)">Rp ${escapeHtml(formatCompactCurrency(region.totalBudget))}</strong>` +
-      ` <span style="color:var(--brick)">(${escapeHtml(String(wasteRatio))}%)</span>` +
+      `<div class="detail-section-title"><span class="ds-icon">📊</span> Distribusi Anggaran / Pagu</div>` +
+      `<div class="pie-chart-layout">` +
+      `<div class="pie-canvas-wrap"><canvas id="${escapeAttr(pieCanvasId)}" width="130" height="130"></canvas>` +
+      `<div class="pie-center-label"><div class="pie-cl-v">Rp ${escapeHtml(formatCompactCurrency(region.totalBudget))}</div><div class="pie-cl-l">Total Pagu</div></div>` +
       `</div>` +
-      `</div>`
-    );
+      `<div class="pie-legend">${legendRows}</div>` +
+      `</div>` +
+      `<div class="waste-ratio-bar">` +
+      `<div class="wrb-label"><span>Rasio Potensi Pemborosan</span><span class="wrb-pct" style="color:${wasteRatio>=50?'var(--brick)':wasteRatio>=25?'var(--olive)':'var(--sage)'}">${wasteRatio}%</span></div>` +
+      `<div class="wrb-track"><div class="wrb-fill" style="width:${wasteRatio}%;background:${wasteRatio>=50?'var(--brick)':wasteRatio>=25?'var(--olive)':'var(--sage)'}"></div></div>` +
+      `<div class="wrb-info">Rp ${escapeHtml(formatCompactCurrency(region.totalPotentialWaste))} dari Rp ${escapeHtml(formatCompactCurrency(region.totalBudget))}</div>` +
+      `</div>` +
+      `</div>`;
+
+    scheduleChart(pieCanvasId, slices, { donut: true });
+    return html;
   }
 
   function renderAnomalySection(region) {
     const sevItems = [
       { key: "absurd", label: "Absurd", color: "var(--rose)", count: Number(region.severityCounts.absurd) || 0 },
       { key: "high", label: "High", color: "var(--brick)", count: Number(region.severityCounts.high) || 0 },
-      {
-        key: "med",
-        label: "Medium",
-        color: "var(--olive)",
-        count:
-          Number(region.severityCounts.med) ||
-          0,
-      },
+      { key: "med", label: "Medium", color: "var(--olive)", count: Number(region.severityCounts.med) || 0 },
       {
         key: "low",
         label: "Low",
@@ -979,43 +1046,67 @@
       },
     ];
 
-    const maxCount = Math.max(...sevItems.map((item) => item.count), 1);
+    const total = sevItems.reduce((s, i) => s + i.count, 0) || 1;
+    const maxCount = Math.max(...sevItems.map((i) => i.count), 1);
+    const anomalyCanvasId = `anomalyDonut_${Date.now()}`;
+    const slices = sevItems.map((i) => ({ value: i.count, color: i.color }));
 
-    const bars = sevItems
-      .map((item) => {
-        const pct = item.count > 0 ? Math.max(2, Math.round((item.count / maxCount) * 100)) : 0;
-        const isActive = state.modal.severity === item.key;
-        return (
-          `<div class="ac-row">` +
-          `<div class="ac-label" style="color:${escapeAttr(item.color)};font-weight:${isActive ? "700" : "600"}">${escapeHtml(item.label)}</div>` +
-          `<div class="ac-track"><div class="ac-fill" style="width:${pct}%;background:${escapeAttr(item.color)};opacity:${isActive ? 1 : 0.65}"></div></div>` +
-          `<div class="ac-count">${escapeHtml(formatNumber(item.count))}</div>` +
-          `</div>`
-        );
-      })
-      .join("");
+    const anomalyScore = (() => {
+      const absurdW = (sevItems.find(i => i.key === "absurd")?.count || 0) * 4;
+      const highW = (sevItems.find(i => i.key === "high")?.count || 0) * 3;
+      const medW = (sevItems.find(i => i.key === "med")?.count || 0) * 2;
+      const rawScore = total > 0 ? Math.min(100, Math.round(((absurdW + highW + medW) / (total * 4)) * 100)) : 0;
+      return rawScore;
+    })();
 
-    const pills = sevItems
-      .map((item) => {
+    const scoreColor = anomalyScore >= 60 ? "var(--brick)" : anomalyScore >= 30 ? "var(--olive)" : "var(--sage)";
+    const scoreLabel = anomalyScore >= 60 ? "RISIKO TINGGI" : anomalyScore >= 30 ? "PERLU PERHATIAN" : "RELATIF AMAN";
+
+    const bars = sevItems.map((item) => {
+      const pct = item.count > 0 ? Math.max(2, Math.round((item.count / maxCount) * 100)) : 0;
+      const itemPct = Math.round((item.count / total) * 100);
+      const isActive = state.modal.severity === item.key;
+      return (
+        `<div class="ac2-row${isActive ? " active" : ""}" onclick="${actionCall("setModalSeverity", isActive ? "" : item.key)}" style="cursor:pointer">` +
+        `<div class="ac2-head">` +
+        `<span class="ac2-dot" style="background:${escapeAttr(resolveCssColor(item.color))}"></span>` +
+        `<span class="ac2-label" style="color:${escapeAttr(item.color)}">${escapeHtml(item.label)}</span>` +
+        `<span class="ac2-count">${escapeHtml(formatNumber(item.count))} paket</span>` +
+        `<span class="ac2-pct">${itemPct}%</span>` +
+        `</div>` +
+        `<div class="ac2-track"><div class="ac2-fill" style="width:${pct}%;background:${escapeAttr(resolveCssColor(item.color))};opacity:${isActive ? 1 : 0.6}"></div></div>` +
+        `</div>`
+      );
+    }).join("");
+
+    const html =
+      `<div class="detail-section">` +
+      `<div class="detail-section-title"><span class="ds-icon">🔍</span> Deteksi Anomali & Severity</div>` +
+      `<div class="anomaly-layout">` +
+      `<div class="anomaly-donut-col">` +
+      `<div class="pie-canvas-wrap"><canvas id="${escapeAttr(anomalyCanvasId)}" width="120" height="120"></canvas>` +
+      `<div class="pie-center-label"><div class="pie-cl-v" style="font-size:18px;color:${escapeAttr(scoreColor)}">${anomalyScore}</div><div class="pie-cl-l">Score</div></div>` +
+      `</div>` +
+      `<div class="anomaly-score-badge" style="color:${escapeAttr(scoreColor)};border-color:${escapeAttr(resolveCssColor(scoreColor))}20">${scoreLabel}</div>` +
+      `</div>` +
+      `<div class="anomaly-bars-col">${bars}</div>` +
+      `</div>` +
+      `<div class="sev-filter-pills">` +
+      `<div class="sev-filter-title">Filter tabel paket berdasarkan severity:</div>` +
+      `<button class="sev-pill${!state.modal.severity ? " active" : ""}" onclick="${actionCall("setModalSeverity", "")}">Semua (${escapeHtml(formatNumber(total))})</button>` +
+      sevItems.map((item) => {
         const isActive = state.modal.severity === item.key;
         return (
           `<button class="sev-pill ${escapeAttr(item.key)}${isActive ? " active" : ""}" onclick="${actionCall("setModalSeverity", isActive ? "" : item.key)}">` +
           `${escapeHtml(item.label)} (${escapeHtml(formatNumber(item.count))})` +
           `</button>`
         );
-      })
-      .join("");
-
-    return (
-      `<div class="detail-section">` +
-      `<div class="detail-section-title"><span class="ds-icon">🔍</span> Deteksi Anomali & Severity</div>` +
-      `<div class="anomaly-chart-wrap">${bars}</div>` +
-      `<div class="sev-filter-pills">` +
-      `<button class="sev-pill${!state.modal.severity ? " active" : ""}" onclick="${actionCall("setModalSeverity", "")}">Semua</button>` +
-      pills +
+      }).join("") +
       `</div>` +
-      `</div>`
-    );
+      `</div>`;
+
+    scheduleChart(anomalyCanvasId, slices, { donut: true });
+    return html;
   }
 
   function renderUmkmSection() {
@@ -1559,10 +1650,31 @@
 
   function findBandungRegion() {
     if (!dashboardData) return null;
+
+    const normalizeName = (value) =>
+      String(value || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const strictCityBandung = dashboardData.regions.find((region) => {
+      if (region.regionType !== "Kota") return false;
+      const regionName = normalizeName(region.regionName);
+      const displayName = normalizeName(region.displayName);
+      return regionName === "bandung" || displayName === "kota bandung";
+    });
+
+    if (strictCityBandung) {
+      return strictCityBandung;
+    }
+
     return (
-      dashboardData.regions.find(
-        (region) => region.regionType === "Kota" && region.regionName.toLowerCase().includes("bandung")
-      ) || null
+      dashboardData.regions.find((region) => {
+        if (region.regionType !== "Kota") return false;
+        const displayName = normalizeName(region.displayName);
+        return /\bbandung\b/.test(displayName);
+      }) || null
     );
   }
 
@@ -1613,10 +1725,8 @@
     const feature = geo.features.find((f) => f.properties && f.properties.regionKey === region.regionKey);
     if (!feature) return;
 
-    setTimeout(() => {
-      AuditMap.zoomToRegion(feature, { padding: 100, duration: 2000, maxZoom: 13 });
-      setTimeout(() => showBandungSpotlight(region), 1800);
-    }, 600);
+    AuditMap.zoomToRegion(feature, { padding: 100, duration: 1400, maxZoom: 13 });
+    setTimeout(() => showBandungSpotlight(region), 1200);
   }
 
   function bindEvents() {
@@ -1642,11 +1752,12 @@
       provincesByKey = new Map(dashboardData.provinceView.provinces.map((province) => [province.provinceKey, province]));
       renderKpis();
       renderLegend();
-      initMap();
+      initMap(() => {
+        zoomToBandung();
+      });
       renderFilterChips();
       renderTabs();
       renderSidebarContent();
-      zoomToBandung();
     } catch (error) {
       renderBootstrapError(formatFetchError(error));
     }
