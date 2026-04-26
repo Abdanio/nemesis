@@ -1,15 +1,32 @@
 const { getClient } = require("../src/db");
 const { createApp } = require("../src/app");
+const { initializeDatabase } = require("../scripts/init-db");
 
-// For Vercel Serverless, we might not be able to run the full init-db 
-// if the database is too large (> 512MB).
-// However, we export the app instance here for Vercel to use.
+let isInitialized = false;
+let initError = null;
+
+// Jalankan inisialisasi (download/unzip) secara background
+const initPromise = initializeDatabase()
+  .then(() => { isInitialized = true; })
+  .catch((err) => { initError = err; });
 
 const db = getClient();
 const app = createApp(db);
 
 // Middleware tambahan untuk memastikan CORS berjalan di Vercel
-app.use((req, res, next) => {
+app.use(async (req, res, next) => {
+  // Pastikan inisialisasi selesai sebelum melayani request
+  if (!isInitialized && !initError) {
+    await initPromise;
+  }
+
+  if (initError) {
+    return res.status(500).json({ 
+      error: "Database initialization failed", 
+      details: initError.message 
+    });
+  }
+
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
