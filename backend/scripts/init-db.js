@@ -25,36 +25,39 @@ async function downloadFile(url, outputPath) {
 
   log(`Target download URL: ${downloadUrl}`);
 
-  // Step 1: Try to get the file or the confirmation page
+  // Step 1: Initial request to check for warning page
   let response = await axios({
     method: "get",
     url: downloadUrl,
     responseType: "stream",
+    timeout: 0 // Biarkan download lama tanpa timeout
   });
 
   // Step 2: Check if we got a Google Drive "Large File" warning page
-  // We check this by looking at the response headers or small chunks of data
-  // But a more robust way for GDrive is to check if it's returning HTML instead of zip
   if (response.headers['content-type'] && response.headers['content-type'].includes('text/html')) {
     log("Detected Google Drive virus scan warning. Attempting to bypass...");
     
-    // We need to fetch the page as text to find the confirmation token
     const pageRes = await axios.get(downloadUrl);
     const confirmMatch = pageRes.data.match(/confirm=([^&" ]+)/);
     
     if (confirmMatch) {
       const confirmToken = confirmMatch[1];
-      downloadUrl += `&confirm=${confirmToken}`;
+      const finalUrl = `${downloadUrl}&confirm=${confirmToken}`;
       log(`Bypassing with token: ${confirmToken}`);
       
+      // Request ulang dengan token konfirmasi
       response = await axios({
         method: "get",
-        url: downloadUrl,
+        url: finalUrl,
         responseType: "stream",
+        timeout: 0
       });
+    } else {
+      log("Could not find confirm token in the page.", true);
     }
   }
 
+  // Step 3: Pipa data ke file
   const writer = fs.createWriteStream(outputPath);
   response.data.pipe(writer);
 
@@ -64,7 +67,11 @@ async function downloadFile(url, outputPath) {
       resolve();
     });
     writer.on("error", (err) => {
-      log(`Download error: ${err.message}`, true);
+      log(`Write error: ${err.message}`, true);
+      reject(err);
+    });
+    response.data.on("error", (err) => {
+      log(`Download stream error: ${err.message}`, true);
       reject(err);
     });
   });
