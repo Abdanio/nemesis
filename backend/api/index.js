@@ -1,0 +1,11 @@
+const { getClient } = require("../src/db");
+const { createApp } = require("../src/app");
+
+// For Vercel Serverless, we might not be able to run the full init-db 
+// if the database is too large (> 512MB).
+// However, we export the app instance here for Vercel to use.
+
+const db = getClient();
+const app = createApp(db);
+
+module.exports = app;
