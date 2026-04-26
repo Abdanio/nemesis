@@ -1,83 +1,23 @@
 const fs = require("fs");
-const path = require("path");
 const Database = require("better-sqlite3");
-const { DATA_DIR, DB_PATH } = require("./config");
+const { DB_PATH } = require("./config");
 
-const SQLITE_EXTENSIONS = new Set([".sqlite", ".sqlite3", ".db"]);
-const REQUIRED_SCHEMA_TABLES = ["packages", "regions"];
+let _db = null;
 
-function isSqliteFile(fileName) {
-  const extension = path.extname(fileName).toLowerCase();
-  return SQLITE_EXTENSIONS.has(extension);
-}
-
-function listExistingSqliteFiles(directoryPath) {
-  if (!fs.existsSync(directoryPath)) {
-    return [];
-  }
-
-  return fs
-    .readdirSync(directoryPath, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && isSqliteFile(entry.name))
-    .map((entry) => path.resolve(directoryPath, entry.name))
-    .sort((left, right) => left.localeCompare(right));
-}
-
-function hasApplicationSchema(filePath) {
-  let db;
-
-  try {
-    db = new Database(filePath, { readonly: true, fileMustExist: true });
-
-    return REQUIRED_SCHEMA_TABLES.every((tableName) =>
-      db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(tableName)
-    );
-  } catch {
-    return false;
-  } finally {
-    if (db) {
-      db.close();
+function getClient() {
+  if (!_db) {
+    if (!fs.existsSync(DB_PATH)) {
+      console.warn(`Database file not found at ${DB_PATH}. Make sure to download and unzip it.`);
     }
-  }
-}
-
-function resolveRuntimeDbPath() {
-  const configuredPath = path.resolve(DB_PATH);
-  const configuredFileName = path.basename(configuredPath).toLowerCase();
-  const existingDatabases = listExistingSqliteFiles(DATA_DIR);
-
-  if (!existingDatabases.length) {
-    return configuredPath;
+    
+    _db = new Database(DB_PATH, { verbose: console.log });
+    _db.pragma("journal_mode = WAL");
   }
 
-  const schemaDatabases = existingDatabases.filter(hasApplicationSchema);
-  const preferredDatabases = schemaDatabases.length ? schemaDatabases : existingDatabases;
-  const configuredMatch = preferredDatabases.find(
-    (filePath) => path.basename(filePath).toLowerCase() === configuredFileName
-  );
-
-  return configuredMatch || preferredDatabases[0];
-}
-
-function ensureDataDirectory() {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-
-function openDatabase() {
-  ensureDataDirectory();
-  const runtimeDbPath = resolveRuntimeDbPath();
-
-  const db = new Database(runtimeDbPath);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-
-  return db;
+  return _db;
 }
 
 module.exports = {
-  DB_PATH,
-  hasApplicationSchema,
-  listExistingSqliteFiles,
-  openDatabase,
-  resolveRuntimeDbPath,
+  getClient,
 };
+
