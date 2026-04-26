@@ -10,7 +10,10 @@ function getClient() {
       console.warn(`Database file not found at ${DB_PATH}. Make sure to download and unzip it.`);
     }
     
-    _db = new Database(DB_PATH, { verbose: console.log });
+    _db = new Database(DB_PATH, { 
+      verbose: console.log,
+      fileMustExist: true // Jangan buat file baru jika belum ada
+    });
     _db.pragma("journal_mode = WAL");
   }
 

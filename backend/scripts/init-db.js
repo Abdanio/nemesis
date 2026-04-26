@@ -5,8 +5,16 @@ const unzipper = require("unzipper");
 const { DB_PATH } = require("../src/config");
 const { importSqlDump } = require("../src/db-transfer");
 
+const logBuffer = [];
+function log(message, isError = false) {
+  const entry = { time: new Date().toLocaleTimeString(), message, isError };
+  console.log(`[INIT] ${message}`);
+  logBuffer.push(entry);
+  if (logBuffer.length > 100) logBuffer.shift();
+}
+
 async function downloadFile(url, outputPath) {
-  console.log(`[INIT] Starting download from: ${url}`);
+  log(`Starting download from: ${url}`);
   const response = await axios({
     method: "get",
     url: url,
@@ -18,11 +26,11 @@ async function downloadFile(url, outputPath) {
 
   return new Promise((resolve, reject) => {
     writer.on("finish", () => {
-      console.log(`[INIT] Download finished: ${outputPath}`);
+      log(`Download finished: ${outputPath}`);
       resolve();
     });
     writer.on("error", (err) => {
-      console.error(`[INIT] Download error: ${err.message}`);
+      log(`Download error: ${err.message}`, true);
       reject(err);
     });
   });
@@ -32,10 +40,10 @@ async function initializeDatabase() {
   const dataDir = path.dirname(DB_PATH);
   const GDRIVE_ZIP_URL = process.env.GDRIVE_DB_ZIP_URL;
 
-  console.log(`[INIT] Checking database at: ${DB_PATH}`);
+  log(`Checking database at: ${DB_PATH}`);
   
   if (fs.existsSync(DB_PATH)) {
-    console.log("[INIT] Database already exists. Skipping.");
+    log("Database already exists. Skipping.");
     return;
   }
 
@@ -52,38 +60,38 @@ async function initializeDatabase() {
   try {
     await downloadFile(GDRIVE_ZIP_URL, zipPath);
     
-    console.log("[INIT] Opening zip file...");
+    log("Opening zip file...");
     const directory = await unzipper.Open.file(zipPath);
     
     const sqlFile = directory.files.find(f => f.path.endsWith(".sql"));
     const sqliteFile = directory.files.find(f => f.path.endsWith(".sqlite") || f.path.endsWith(".db"));
 
     if (sqliteFile) {
-      console.log(`[INIT] Found SQLite file: ${sqliteFile.path}. Extracting...`);
+      log(`Found SQLite file: ${sqliteFile.path}. Extracting...`);
       const content = await sqliteFile.buffer();
       fs.writeFileSync(DB_PATH, content);
     } else if (sqlFile) {
-      console.log(`[INIT] Found SQL dump: ${sqlFile.path}. Extracting and importing...`);
+      log(`Found SQL dump: ${sqlFile.path}. Extracting and importing...`);
       const tempSqlPath = path.join(dataDir, "temp_import.sql");
       const content = await sqlFile.buffer();
       fs.writeFileSync(tempSqlPath, content);
       
-      console.log("[INIT] Starting SQL import (this may take a while)...");
+      log("Starting SQL import (this may take a while)...");
       await importSqlDump(tempSqlPath, DB_PATH);
       fs.unlinkSync(tempSqlPath);
     } else {
       throw new Error("No .sql or .sqlite file found in the zip.");
     }
 
-    console.log("[INIT] Database initialization SUCCESSFUL!");
+    log("Database initialization SUCCESSFUL!");
     if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
   } catch (error) {
-    console.error(`[INIT] FATAL ERROR: ${error.message}`);
+    log(`FATAL ERROR: ${error.message}`, true);
     throw error;
   }
 }
 
-module.exports = { initializeDatabase };
+module.exports = { initializeDatabase, logBuffer };
 
 if (require.main === module) {
   initializeDatabase().catch(() => process.exit(1));
