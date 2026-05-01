@@ -1240,8 +1240,10 @@
         formatNumber(region.severityCounts.absurd)
       )}</strong></div>` +
       `</div>` +
-      renderBudgetChart(region) +
-      renderAnomalySection(region) +
+      `<div class="modal-detail-grid">` +
+      `<div class="modal-detail-panel">${renderBudgetChart(region)}</div>` +
+      `<div class="modal-detail-panel">${renderAnomalySection(region)}</div>` +
+      `</div>` +
       renderUmkmSection() +
       `<div class="modal-filters">` +
       `<input type="text" placeholder="Cari paket, lembaga, atau satker..." value="${escapeAttr(
@@ -1658,22 +1660,22 @@
         .replace(/\s+/g, " ")
         .trim();
 
-    const strictCityBandung = dashboardData.regions.find((region) => {
+    const strictKotaBandung = dashboardData.regions.find((region) => {
       if (region.regionType !== "Kota") return false;
       const regionName = normalizeName(region.regionName);
       const displayName = normalizeName(region.displayName);
-      return regionName === "bandung" || displayName === "kota bandung";
+      return regionName === "bandung" || displayName === "kota bandung" || displayName === "bandung";
     });
 
-    if (strictCityBandung) {
-      return strictCityBandung;
+    if (strictKotaBandung) {
+      return strictKotaBandung;
     }
 
     return (
       dashboardData.regions.find((region) => {
         if (region.regionType !== "Kota") return false;
         const displayName = normalizeName(region.displayName);
-        return /\bbandung\b/.test(displayName);
+        return displayName === "kota bandung" || displayName === "bandung";
       }) || null
     );
   }
@@ -1717,16 +1719,32 @@
 
   function zoomToBandung() {
     const region = findBandungRegion();
-    if (!region) return;
-
     const geo = getActiveGeo();
+    const normalizeName = (value) =>
+      String(value || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
     if (!geo || !Array.isArray(geo.features)) return;
 
-    const feature = geo.features.find((f) => f.properties && f.properties.regionKey === region.regionKey);
+    const feature =
+      (region && geo.features.find((f) => f.properties && f.properties.regionKey === region.regionKey)) ||
+      geo.features.find((f) => {
+        const props = f.properties || {};
+        const regionName = normalizeName(props.regionName || props.NAME_2 || props.name_2);
+        const displayName = normalizeName(props.displayName || props.display_name || props.NAME_2 || props.name_2);
+        const regionType = normalizeName(props.regionType || props.TYPE_2 || props.type_2);
+        return regionType.startsWith("kota") && (regionName === "bandung" || displayName === "bandung");
+      });
+
     if (!feature) return;
 
-    AuditMap.zoomToRegion(feature, { padding: 100, duration: 1400, maxZoom: 13 });
-    setTimeout(() => showBandungSpotlight(region), 1200);
+    AuditMap.zoomToRegion(feature, { padding: 100, duration: 1400, maxZoom: 14 });
+    if (region) {
+      setTimeout(() => showBandungSpotlight(region), 1200);
+    }
   }
 
   function bindEvents() {

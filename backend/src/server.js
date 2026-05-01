@@ -1,4 +1,4 @@
-const { PORT } = require("./config");
+const { PORT, TURSO_CONNECTION_URL } = require("./config");
 const { getClient } = require("./db");
 const { createApp } = require("./app");
 
@@ -7,8 +7,8 @@ async function main() {
   const db = getClient();
   
   try {
-    const row = db.prepare("SELECT 1 FROM regions LIMIT 1").get();
-    if (!row) {
+    const result = await db.execute("SELECT 1 FROM regions LIMIT 1");
+    if (!result.rows || result.rows.length === 0) {
       console.warn("Database is empty or regions table is missing.");
     } else {
       console.log("Database connection verified.");
@@ -21,7 +21,7 @@ async function main() {
   const app = createApp(db);
   const server = app.listen(PORT, () => {
     console.log(`Dashboard backend listening on http://127.0.0.1:${PORT}`);
-    console.log(`Database Path: ${require("./config").DB_PATH}`);
+    console.log(`Database URL: ${TURSO_CONNECTION_URL}`);
   });
 
 

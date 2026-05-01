@@ -34,8 +34,8 @@ const OWNER_METRIC_DEFINITIONS = [
   },
 ];
 
-function getJsonAsset(db, key, fallback) {
-  const row = db.prepare("SELECT json FROM assets WHERE key = ?").get(key);
+async function getJsonAsset(db, key, fallback) {
+  const row = await db.prepare("SELECT json FROM assets WHERE key = ?").get(key);
   return row ? JSON.parse(row.json) : fallback;
 }
 
@@ -243,8 +243,8 @@ function buildLegend(values) {
   };
 }
 
-function getNationalSummary(db) {
-  return db
+async function getNationalSummary(db) {
+  return await db
     .prepare(`
       SELECT
         COUNT(*) AS total_packages,
@@ -258,8 +258,8 @@ function getNationalSummary(db) {
     .get();
 }
 
-function getRegionRows(db) {
-  return db
+async function getRegionRows(db) {
+  return await db
     .prepare(`
       SELECT
         regions.region_key,
@@ -305,8 +305,8 @@ function getRegionRows(db) {
     .all();
 }
 
-function getProvinceRows(db) {
-  return db
+async function getProvinceRows(db) {
+  return await db
     .prepare(`
       SELECT
         provinces.province_key,
@@ -334,8 +334,8 @@ function getProvinceRows(db) {
     .all();
 }
 
-function getOwnerRows(db, ownerType) {
-  return db
+async function getOwnerRows(db, ownerType) {
+  return await db
     .prepare(`
       SELECT
         owner_metrics.owner_type,
@@ -466,9 +466,9 @@ function mapPackageRow(row) {
   };
 }
 
-function queryPackagesPage(db, scopeTable, scopeColumn, scopeKey, normalizedQuery, options = {}) {
+async function queryPackagesPage(db, scopeTable, scopeColumn, scopeKey, normalizedQuery, options = {}) {
   const whereClause = buildPackagesWhereClause(scopeColumn, scopeKey, normalizedQuery, options);
-  const countRow = db
+  const countRow = await db
     .prepare(`
       SELECT COUNT(*) AS total
       FROM ${scopeTable}
@@ -480,7 +480,7 @@ function queryPackagesPage(db, scopeTable, scopeColumn, scopeKey, normalizedQuer
   const totalPages = totalItems ? Math.ceil(totalItems / normalizedQuery.pageSize) : 1;
   const page = Math.min(normalizedQuery.page, totalPages);
   const offset = (page - 1) * normalizedQuery.pageSize;
-  const rows = db
+  const rows = (await db
     .prepare(`
       SELECT
         packages.id,
@@ -517,7 +517,7 @@ function queryPackagesPage(db, scopeTable, scopeColumn, scopeKey, normalizedQuer
         packages.inserted_order ASC
       LIMIT ? OFFSET ?
     `)
-    .all(...whereClause.params, normalizedQuery.pageSize, offset)
+    .all(...whereClause.params, normalizedQuery.pageSize, offset))
     .map(mapPackageRow);
 
   return {
@@ -529,9 +529,9 @@ function queryPackagesPage(db, scopeTable, scopeColumn, scopeKey, normalizedQuer
   };
 }
 
-function queryOwnerPackagesPage(db, ownerType, ownerName, normalizedQuery) {
+async function queryOwnerPackagesPage(db, ownerType, ownerName, normalizedQuery) {
   const whereClause = buildOwnerPackagesWhereClause(ownerType, ownerName, normalizedQuery);
-  const countRow = db
+  const countRow = await db
     .prepare(`
       SELECT COUNT(*) AS total
       FROM packages
@@ -542,7 +542,7 @@ function queryOwnerPackagesPage(db, ownerType, ownerName, normalizedQuery) {
   const totalPages = totalItems ? Math.ceil(totalItems / normalizedQuery.pageSize) : 1;
   const page = Math.min(normalizedQuery.page, totalPages);
   const offset = (page - 1) * normalizedQuery.pageSize;
-  const rows = db
+  const rows = (await db
     .prepare(`
       SELECT
         packages.id,
@@ -578,7 +578,7 @@ function queryOwnerPackagesPage(db, ownerType, ownerName, normalizedQuery) {
         packages.inserted_order ASC
       LIMIT ? OFFSET ?
     `)
-    .all(...whereClause.params, normalizedQuery.pageSize, offset)
+    .all(...whereClause.params, normalizedQuery.pageSize, offset))
     .map(mapPackageRow);
 
   return {
@@ -590,11 +590,11 @@ function queryOwnerPackagesPage(db, ownerType, ownerName, normalizedQuery) {
   };
 }
 
-function getBootstrapPayload(db) {
-  const summaryRow = getNationalSummary(db);
-  const regions = getRegionRows(db).map(mapRegionRow);
-  const provinces = getProvinceRows(db).map(mapProvinceRow);
-  const centralOwners = getOwnerRows(db, "central").map(mapOwnerRow);
+async function getBootstrapPayload(db) {
+  const summaryRow = await getNationalSummary(db);
+  const regions = (await getRegionRows(db)).map(mapRegionRow);
+  const provinces = (await getProvinceRows(db)).map(mapProvinceRow);
+  const centralOwners = (await getOwnerRows(db, "central")).map(mapOwnerRow);
 
   return {
     summary: {
@@ -606,11 +606,11 @@ function getBootstrapPayload(db) {
       multiLocationPackages: summaryRow.multi_location_packages || 0,
     },
     legend: buildLegend(regions.map((region) => region.totalPotentialWaste)),
-    geo: getJsonAsset(db, "audit_geojson", { type: "FeatureCollection", features: [] }),
+    geo: await getJsonAsset(db, "audit_geojson", { type: "FeatureCollection", features: [] }),
     regions,
     provinceView: {
       legend: buildLegend(provinces.map((province) => province.totalPotentialWaste)),
-      geo: getJsonAsset(db, "audit_province_geojson", { type: "FeatureCollection", features: [] }),
+      geo: await getJsonAsset(db, "audit_province_geojson", { type: "FeatureCollection", features: [] }),
       provinces,
     },
     ownerLists: {
@@ -619,8 +619,8 @@ function getBootstrapPayload(db) {
   };
 }
 
-function getRegionPackages(db, regionKey, requestQuery) {
-  const regionRow = db
+async function getRegionPackages(db, regionKey, requestQuery) {
+  const regionRow = await db
     .prepare(`
       SELECT
         regions.region_key,
@@ -666,7 +666,7 @@ function getRegionPackages(db, regionKey, requestQuery) {
   }
 
   const normalizedQuery = normalizeScopedPackageQuery(requestQuery);
-  const pageResult = queryPackagesPage(db, "package_regions", "package_regions.region_key", regionKey, normalizedQuery);
+  const pageResult = await queryPackagesPage(db, "package_regions", "package_regions.region_key", regionKey, normalizedQuery);
 
   return {
     region: mapRegionRow(regionRow),
@@ -690,8 +690,8 @@ function getRegionPackages(db, regionKey, requestQuery) {
   };
 }
 
-function getProvincePackages(db, provinceKey, requestQuery) {
-  const provinceRow = db
+async function getProvincePackages(db, provinceKey, requestQuery) {
+  const provinceRow = await db
     .prepare(`
       SELECT
         provinces.province_key,
@@ -721,7 +721,7 @@ function getProvincePackages(db, provinceKey, requestQuery) {
   const normalizedQuery = normalizeScopedPackageQuery(requestQuery, {
     allowOwnerType: false,
   });
-  const pageResult = queryPackagesPage(
+  const pageResult = await queryPackagesPage(
     db,
     "package_provinces",
     "package_provinces.province_key",
@@ -753,7 +753,7 @@ function getProvincePackages(db, provinceKey, requestQuery) {
   };
 }
 
-function getOwnerPackages(db, requestQuery) {
+async function getOwnerPackages(db, requestQuery) {
   const ownerType = (requestQuery.ownerType || "").trim();
   const ownerName = (requestQuery.ownerName || "").trim();
 
@@ -761,7 +761,7 @@ function getOwnerPackages(db, requestQuery) {
     return null;
   }
 
-  const ownerRow = db
+  const ownerRow = await db
     .prepare(`
       SELECT
         owner_metrics.owner_type,
@@ -787,7 +787,7 @@ function getOwnerPackages(db, requestQuery) {
   const normalizedQuery = normalizeScopedPackageQuery(requestQuery, {
     allowOwnerType: false,
   });
-  const pageResult = queryOwnerPackagesPage(db, ownerType, ownerName, normalizedQuery);
+  const pageResult = await queryOwnerPackagesPage(db, ownerType, ownerName, normalizedQuery);
 
   return {
     owner: mapOwnerRow(ownerRow),
@@ -818,8 +818,8 @@ const UMKM_BUDGET_THRESHOLD = 500000000;
 // the primary procurement pathways for UMKM/small businesses in Indonesian government.
 const UMKM_PROCUREMENT_PATTERN = "%Langsung%";
 
-function getRegionUmkmSummary(db, regionKey) {
-  const regionRow = db
+async function getRegionUmkmSummary(db, regionKey) {
+  const regionRow = await db
     .prepare(
       `SELECT regions.region_key, regions.display_name FROM regions WHERE regions.region_key = ?`
     )
@@ -829,7 +829,7 @@ function getRegionUmkmSummary(db, regionKey) {
     return null;
   }
 
-  const summaryRow = db
+  const summaryRow = await db
     .prepare(
       `
       SELECT
@@ -852,7 +852,7 @@ function getRegionUmkmSummary(db, regionKey) {
     )
     .get(regionKey, UMKM_BUDGET_THRESHOLD, UMKM_PROCUREMENT_PATTERN);
 
-  const topPackages = db
+  const topPackages = await db
     .prepare(
       `
       SELECT
@@ -883,7 +883,7 @@ function getRegionUmkmSummary(db, regionKey) {
     )
     .all(regionKey, UMKM_BUDGET_THRESHOLD, UMKM_PROCUREMENT_PATTERN);
 
-  const procurementMethodCounts = db
+  const procurementMethodCounts = await db
     .prepare(
       `
       SELECT

@@ -210,10 +210,16 @@ window.AuditMap = (() => {
       if (options.fitBounds) {
         const bounds = computeBounds(geo);
         if (bounds) {
+          const ready = () => {
+            if (onReady) onReady();
+          };
+
+          map.once("moveend", ready);
           map.fitBounds(bounds, {
             padding: options.isProvinceView ? 80 : 50,
             duration: 300,
           });
+          return;
         }
       }
 

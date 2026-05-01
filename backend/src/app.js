@@ -9,15 +9,62 @@ const {
   getRegionUmkmSummary,
 } = require("./dashboard-repository");
 
-function resolveCorsOrigin() {
-  if (CORS_ORIGIN === "*") return "*";
-  return CORS_ORIGIN.split(",").map((item) => item.trim()).filter(Boolean);
+function resolveCorsOptions() {
+  const originEnv = String(CORS_ORIGIN || "*").trim();
+
+  if (originEnv === "*") {
+    return {
+      origin: true,
+      methods: ["GET", "OPTIONS", "PATCH", "DELETE", "POST", "PUT"],
+      allowedHeaders: [
+        "X-CSRF-Token",
+        "X-Requested-With",
+        "Accept",
+        "Accept-Version",
+        "Content-Length",
+        "Content-MD5",
+        "Content-Type",
+        "Date",
+        "X-Api-Version",
+      ],
+      maxAge: 86400,
+    };
+  }
+
+  const allowList = originEnv
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return {
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      callback(null, allowList.includes(origin));
+    },
+    methods: ["GET", "OPTIONS", "PATCH", "DELETE", "POST", "PUT"],
+    allowedHeaders: [
+      "X-CSRF-Token",
+      "X-Requested-With",
+      "Accept",
+      "Accept-Version",
+      "Content-Length",
+      "Content-MD5",
+      "Content-Type",
+      "Date",
+      "X-Api-Version",
+    ],
+    maxAge: 86400,
+  };
 }
 
 function createApp(db) {
   const app = express();
 
-  app.use(cors({ origin: resolveCorsOrigin() }));
+  const corsOptions = resolveCorsOptions();
+  app.use(cors(corsOptions));
+  // Express 5 (path-to-regexp) does not accept "*" route patterns.
+  // Use a regex to match all OPTIONS preflight requests.
+  app.options(/.*/, cors(corsOptions));
   app.use(express.json());
 
   app.get("/api/health", (_req, res) => {

@@ -7,13 +7,25 @@
     <title>Audit Pengadaan Kab/Kota - LKPP 2026</title>
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" />
-    <link rel="stylesheet" href="assets/css/styles.css?v=2" />
+    <link rel="stylesheet" href="assets/css/styles.css?v=3" />
     <script defer src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
     <script defer src="assets/js/map.js"></script>
     <script>
-        // PENTING: Ganti URL ini dengan URL Backend Vercel kamu!
-        // Contoh: "https://nemesis-backend.vercel.app/api"
-        window.DASHBOARD_API_BASE_URL = "https://nemesis-backend-beige.vercel.app/api";
+        // Default: gunakan origin tempat frontend ini dibuka.
+        // Kalau backend kamu beda domain, override value ini sebelum `assets/js/app.js` dijalankan.
+        (function () {
+            if (window.DASHBOARD_API_BASE_URL) return;
+
+            const isLocal =
+                location.hostname === "127.0.0.1" ||
+                location.hostname === "localhost";
+
+            // Saat frontend dijalankan via static server (python http.server),
+            // endpoint /api tidak ada. Default-kan ke backend lokal Express di port 3000.
+            window.DASHBOARD_API_BASE_URL = isLocal
+                ? "http://127.0.0.1:3000/api"
+                : `${location.origin}/api`;
+        })();
     </script>
     <script defer src="assets/js/app.js"></script>
 </head>
